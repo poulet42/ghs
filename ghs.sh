@@ -105,7 +105,23 @@ _ghs_init() {
   printf '\n\033[2mSaved to %s. Try: ghs list\033[0m\n' "$cfg" >&2
 }
 
+_ghs_switch() {
+  local cfg="${GHS_CONFIG:-$HOME/.config/ghs/profiles}" active name key user
+  gh auth switch || return $?
+  active=$(gh auth status 2>&1 | awk '/account /{a=$0; sub(/.*account /,"",a); sub(/ .*/,"",a)} /Active account: true/{print a; exit}')
+  while read -r name key user; do
+    [ "$user" = "$active" ] || continue
+    key="${key/#\~/$HOME}"
+    export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes"
+    echo "ghs: $name (ssh $key, gh $user)"
+    return 0
+  done < <(grep -vE '^\s*(#|$)' "$cfg" 2>/dev/null)
+  echo "ghs: no profile for gh account '$active'; SSH key unchanged (ghs init)" >&2
+  return 1
+}
+
 ghs() {
+  [ "${1:-}" = switch ] && { _ghs_switch; return $?; }
   [ "${1:-}" = init ] && { _ghs_init; return $?; }
   local cfg="${GHS_CONFIG:-$HOME/.config/ghs/profiles}"
   if [ ! -f "$cfg" ]; then

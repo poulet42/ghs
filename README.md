@@ -41,6 +41,7 @@ echo 'source ~/.ghs/ghs.sh' >> ~/.zshrc   # or ~/.bashrc
 | --- | --- |
 | `ghs init` | Guided setup: pick `gh` accounts (checkboxes), pick an SSH key for each |
 | `ghs <name>` | Switch to a profile |
+| `ghs switch` | Same as `gh auth switch` (toggles with two accounts, prompts with more), then applies that account's SSH key |
 | `ghs list` | Show profiles |
 
 ## Config
