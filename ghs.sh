@@ -1,5 +1,5 @@
 # ghs: switch SSH key + gh account. Source this file from ~/.zshrc or ~/.bashrc.
-# Profiles: ${GHS_CONFIG:-~/.config/ghs/profiles}, one per line: <name> <ssh-key-path> <gh-user>
+# Config: ${GHS_CONFIG:-~/.config/ghs/profiles}, one per line: <gh-user> <ssh-key-path>
 
 _ghs_readkey() {
   local k rest
@@ -73,8 +73,15 @@ _ghs_menu() {
   fi
 }
 
+_ghs_cfg() { printf '%s' "${GHS_CONFIG:-$HOME/.config/ghs/profiles}"; }
+
+_ghs_active() {
+  gh auth status 2>&1 | awk '/account /{a=$0; sub(/.*account /,"",a); sub(/ .*/,"",a)} /Active account: true/{print a; exit}'
+}
+
 _ghs_init() {
-  local cfg="${GHS_CONFIG:-$HOME/.config/ghs/profiles}" keys users picked user key name f idx used
+  local cfg keys users picked user key idx used
+  cfg=$(_ghs_cfg)
   [ -t 0 ] || { echo "ghs: init needs a terminal" >&2; return 1; }
   users=$(gh auth status 2>&1 | sed -n 's/.*account \([^ ]*\).*/\1/p' | sort -u)
   [ -n "$users" ] || { echo "ghs: no gh accounts. Run 'gh auth login' for each account first." >&2; return 1; }
@@ -86,7 +93,7 @@ _ghs_init() {
   used=" "
 
   while IFS= read -r user; do
-    if [ -f "$cfg" ] && awk -v u="$user" '$3==u{f=1} END{exit !f}' "$cfg"; then
+    if [ -f "$cfg" ] && awk -v u="$user" '$1==u{f=1} END{exit !f}' "$cfg"; then
       printf '\033[33m!\033[0m %s already configured, skipped\n' "$user" >&2
       continue
     fi
@@ -95,60 +102,54 @@ _ghs_init() {
       case "$used" in *" $key "*) idx=$((idx + 1)) ;; *) break ;; esac
     done < <(printf '%s\n' "$keys")
     key=$(_ghs_menu one "SSH key for $user" "$keys" "$idx") || { echo "ghs: cancelled" >&2; return 1; }
-    printf 'Profile name for %s [%s]: ' "$user" "$user" >&2
-    read -r name </dev/tty
-    name="${name:-$user}"
-    printf '%s %s %s\n' "$name" "$key" "$user" >> "$cfg"
+    printf '%s %s\n' "$user" "$key" >> "$cfg"
     used="$used$key "
-    printf '\033[32m✔\033[0m %s → %s (%s)\n' "$name" "$key" "$user" >&2
+    printf '\033[32m✔\033[0m %s → %s\n' "$user" "$key" >&2
   done < <(printf '%s\n' "$picked")
-  printf '\n\033[2mSaved to %s. Try: ghs list\033[0m\n' "$cfg" >&2
+  printf '\n\033[2mSaved to %s. Try: ghs switch\033[0m\n' "$cfg" >&2
 }
 
 _ghs_switch() {
-  local cfg="${GHS_CONFIG:-$HOME/.config/ghs/profiles}" active name key user
-  gh auth switch || return $?
-  active=$(gh auth status 2>&1 | awk '/account /{a=$0; sub(/.*account /,"",a); sub(/ .*/,"",a)} /Active account: true/{print a; exit}')
-  while read -r name key user; do
-    [ "$user" = "$active" ] || continue
-    key="${key/#\~/$HOME}"
-    export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes"
-    echo "ghs: $name (ssh $key, gh $user)"
-    return 0
-  done < <(grep -vE '^\s*(#|$)' "$cfg" 2>/dev/null)
-  echo "ghs: no profile for gh account '$active'; SSH key unchanged (ghs init)" >&2
-  return 1
-}
-
-ghs() {
-  [ "${1:-}" = switch ] && { _ghs_switch; return $?; }
-  [ "${1:-}" = init ] && { _ghs_init; return $?; }
-  local cfg="${GHS_CONFIG:-$HOME/.config/ghs/profiles}"
-  if [ ! -f "$cfg" ]; then
-    echo "ghs: no config at $cfg. Run: ghs init" >&2
-    return 1
-  fi
-
-  local name key user
+  local cfg active user key
+  cfg=$(_ghs_cfg)
   case "${1:-}" in
-    "" | list | -l)
-      while read -r name key user; do
-        case "$name" in "" | \#*) continue ;; esac
-        printf '%s\t%s\t%s\n' "$name" "$key" "$user"
-      done < "$cfg"
-      return 0
-      ;;
+    -u | --user) [ -n "${2:-}" ] || { echo "ghs: --user needs a login" >&2; return 1; }
+      gh auth switch --user "$2" || return $? ;;
+    "") gh auth switch || return $? ;;
+    *) echo "usage: ghs switch [-u|--user <login>]" >&2; return 1 ;;
   esac
-
-  while read -r name key user; do
-    [ "$name" = "$1" ] || continue
+  active=$(_ghs_active)
+  while read -r user key; do
+    [ "$user" = "$active" ] || continue
     key="${key/#\~/$HOME}"
     [ -f "$key" ] || { echo "ghs: key not found: $key" >&2; return 1; }
     export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes"
-    gh auth switch --user "$user" >/dev/null 2>&1 && echo "ghs: $name (ssh $key, gh $user)"
-    return $?
-  done < <(grep -vE '^\s*(#|$)' "$cfg")
-
-  echo "ghs: unknown profile '$1' (try: ghs list)" >&2
+    echo "ghs: $user (ssh $key)"
+    return 0
+  done < <(grep -vE '^\s*(#|$)' "$cfg" 2>/dev/null)
+  echo "ghs: no SSH key configured for '$active', key unchanged (run: ghs init)" >&2
   return 1
+}
+
+_ghs_status() {
+  local cfg active user key mark
+  cfg=$(_ghs_cfg)
+  [ -f "$cfg" ] || { echo "ghs: no config at $cfg. Run: ghs init" >&2; return 1; }
+  active=$(_ghs_active)
+  while read -r user key; do
+    case "$user" in "" | \#*) continue ;; esac
+    mark=" "; [ "$user" = "$active" ] && mark="*"
+    printf '%s %s\t%s\n' "$mark" "$user" "$key"
+  done < "$cfg"
+}
+
+ghs() {
+  local cmd="${1:-}"
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    switch) _ghs_switch "$@" ;;
+    init) _ghs_init ;;
+    status | "") _ghs_status ;;
+    *) echo "usage: ghs [status] | switch [-u|--user <login>] | init" >&2; return 1 ;;
+  esac
 }

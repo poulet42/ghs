@@ -4,11 +4,12 @@ Switch your SSH key and `gh` account together, in one command. For people with
 several GitHub accounts (work + personal) on one machine.
 
 ```
-$ ghs personal
-ghs: personal (ssh ~/.ssh/id_personal, gh my-personal-login)
+$ ghs switch --user my-personal-login
+✓ Switched active account for github.com to my-personal-login
+ghs: my-personal-login (ssh ~/.ssh/id_personal)
 ```
 
-It sets `GIT_SSH_COMMAND` for the current shell and runs `gh auth switch`.
+It runs `gh auth switch` (same flags, same rotation) and sets `GIT_SSH_COMMAND` for the current shell to the key mapped to the account that became active.
 
 ## Install
 
@@ -40,18 +41,18 @@ echo 'source ~/.ghs/ghs.sh' >> ~/.zshrc   # or ~/.bashrc
 | Command | Does |
 | --- | --- |
 | `ghs init` | Guided setup: pick `gh` accounts (checkboxes), pick an SSH key for each |
-| `ghs <name>` | Switch to a profile |
 | `ghs switch` | Same as `gh auth switch` (toggles with two accounts, prompts with more), then applies that account's SSH key |
-| `ghs list` | Show profiles |
+| `ghs switch -u <login>` | Switch to a given account, like `gh auth switch --user` |
+| `ghs status` | Show accounts and keys, `*` marks the active one |
 
 ## Config
 
-`~/.config/ghs/profiles` (override with `GHS_CONFIG`), one profile per line:
+`~/.config/ghs/profiles` (override with `GHS_CONFIG`), one account per line:
 
 ```
-# name  ssh-key              gh-user
-work     ~/.ssh/id_work       my-work-login
-personal ~/.ssh/id_personal   my-personal-login
+# gh-user              ssh-key
+my-work-login          ~/.ssh/id_work
+my-personal-login      ~/.ssh/id_personal
 ```
 
 ## Notes
